@@ -21,3 +21,8 @@ hf_cache/
 # job logs (folder kept with .gitkeep)
 logs/*
 !logs/.gitkeep
+
+# fake analysis data and its outputs (analysis/make_synthetic.py)
+results/synthetic/
+analysis/figures/synthetic/
+analysis/*_synthetic.csv

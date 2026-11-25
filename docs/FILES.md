@@ -49,3 +49,7 @@ Every file, 2 to 3 lines each. Claude Code keeps this updated.
 
 ### analysis/
 - `analysis/coldstart.py --platform gcp|hpc`: for every scale up in every run, splits the time to a ready replica into decision, node start, image pull, model load and other. Writes `results/<platform>/coldstart.csv`. Its docstring defines the HPC `events.json` format.
+- `analysis/relay_data.py`: loads run folders and computes per run metrics (SLO violation rate, p50 and p95 TTFT and latency, GPU hours, replica hours, time to scale). Its docstring is the single definition of every metric.
+- `analysis/make_charts.py`: writes the 6 slide ready PNGs to `analysis/figures/`, plus `analysis/summary_table.csv` and `analysis/per_run_metrics.csv`. Skips charts whose study has no runs yet.
+- `analysis/relay_analysis.ipynb`: notebook view of the same tables and charts; set `PLATFORM` in the first cell.
+- `analysis/make_synthetic.py`: writes 30 FAKE runs from a toy simulation to `results/synthetic/` (git ignored) so the analysis can be tested before real runs. Never report these numbers.
