@@ -26,3 +26,14 @@ Every file, 2 to 3 lines each. Claude Code keeps this updated.
 - `scripts/gcp/scale_gpu_zero.sh`: end of session. Deletes HPA and ScaledObject, scales vllm to 0, sets GPU pool min to 0 and resizes it to 0.
 - `scripts/gcp/reset_run.sh <baseline>`: before each run. Removes autoscalers, 1 vllm replica, sets GPU pool min to baseline, uses temporary gpu-warmup pause pods to pull in a warm spare, waits until state is stable 60 s.
 - `scripts/gcp/teardown.sh`: asks you to type the cluster name, then deletes the cluster and Artifact Registry repo.
+- `scripts/gcp/install_monitoring.sh`: helm upgrade --install of kube-prometheus-stack (values in `monitoring/kps-values.yaml`) and KEDA. Chart versions from `relay.env`.
+- `scripts/gcp/deploy_serving.sh`: applies the vLLM Deployment, Service and ServiceMonitor, waits for Ready, port-forwards and runs `loadtest/smoke_test.py` to print an answer and TTFT.
+- `scripts/gcp/check_metrics.sh`: port-forwards vLLM and prints the queue, running, TTFT and CPU metric lines. Warns, and exits 1, if a metric name differs from CLAUDE.md.
+- `scripts/gcp/import_dashboard.sh`: reads the Grafana admin password from its secret and uploads `monitoring/relay-dashboard.json` through the Grafana API.
+
+### monitoring/
+- `monitoring/kps-values.yaml`: kube-prometheus-stack settings. 15 s scrape, discover all ServiceMonitors, and export the GKE accelerator node label so the GPU node count query works.
+- `monitoring/relay-dashboard.json`: Grafana dashboard, uid `relay`. Panels: replicas ready, waiting, running, p95 TTFT with a 2 s line, GPU node count, vLLM CPU cores.
+
+### loadtest/
+- `loadtest/smoke_test.py`: stdlib only. Sends one streaming chat request and prints the answer, TTFT and latency. Used by `deploy_serving.sh`; also works on Torch.

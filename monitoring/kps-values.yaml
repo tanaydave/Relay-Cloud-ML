@@ -1,0 +1,16 @@
+# Helm values for kube-prometheus-stack, used by scripts/gcp/install_monitoring.sh.
+prometheus:
+  prometheusSpec:
+    # Pick up our ServiceMonitor even though it lacks the chart's release label.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 30d
+kube-state-metrics:
+  # By default kube-state-metrics exports no node labels, so kube_node_labels would have no
+  # label_cloud_google_com_gke_accelerator and the GPU node count panel would be empty.
+  metricLabelsAllowlist:
+    - nodes=[cloud.google.com/gke-accelerator,cloud.google.com/gke-nodepool,topology.kubernetes.io/zone]
+grafana:
+  defaultDashboardsTimezone: utc
