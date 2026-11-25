@@ -37,3 +37,6 @@ Every file, 2 to 3 lines each. Claude Code keeps this updated.
 
 ### loadtest/
 - `loadtest/smoke_test.py`: stdlib only. Sends one streaming chat request and prints the answer, TTFT and latency. Used by `deploy_serving.sh`; also works on Torch.
+- `scripts/gcp/prom.py`: stdlib Prometheus client. `query_range` and `mean` functions for other scripts, plus a CLI that prints a mean or a time,value CSV.
+- `scripts/gcp/use_strategy.sh <a|b|none> [threshold]`: switches the autoscaler. Deletes the other one first, applies the HPA or KEDA template, and refuses to leave both active.
+- `scripts/gcp/calibrate.sh`: no autoscaler, 1 replica, Locust at 4, 16, 32, 60 users for 120 s. Writes `results/gcp/calibration.csv` with CPU percent of request, waiting, running, TTFT and SLO share per level. `--help` explains how to pick both thresholds.
