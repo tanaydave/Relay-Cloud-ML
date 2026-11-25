@@ -1,0 +1,45 @@
+# Template: apply with   envsubst < k8s/vllm.yaml | kubectl apply -f -
+# The CPU request is required for Strategy A to work.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  labels: {app: vllm}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: vllm}
+  template:
+    metadata:
+      labels: {app: vllm}
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-accelerator: ${GPU_TYPE}
+      containers:
+      - name: vllm
+        image: ${VLLM_IMAGE}
+        args: ["--model", "${MODEL_ID}", "--max-model-len", "${MAX_MODEL_LEN}", "--port", "8000"]
+        ports:
+        - {name: http, containerPort: 8000}
+        resources:
+          requests: {cpu: "2", memory: 8Gi, nvidia.com/gpu: 1}
+          limits: {memory: 12Gi, nvidia.com/gpu: 1}
+        readinessProbe:
+          httpGet: {path: /health, port: 8000}
+          initialDelaySeconds: 20
+          periodSeconds: 5
+        volumeMounts:
+        - {name: shm, mountPath: /dev/shm}
+      volumes:
+      - name: shm
+        emptyDir: {medium: Memory, sizeLimit: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  labels: {app: vllm}
+spec:
+  selector: {app: vllm}
+  ports:
+  - {name: http, port: 8000, targetPort: 8000}

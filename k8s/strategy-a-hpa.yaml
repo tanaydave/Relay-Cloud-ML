@@ -1,0 +1,17 @@
+# Strategy A, resource based. Template: envsubst < k8s/strategy-a-hpa.yaml | kubectl apply -f -
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vllm-cpu
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: vllm}
+  minReplicas: ${MIN_REPLICAS}
+  maxReplicas: ${MAX_REPLICAS}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target: {type: Utilization, averageUtilization: ${CPU_TARGET_PERCENT}}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: ${SCALE_DOWN_WINDOW_S}
