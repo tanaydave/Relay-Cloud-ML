@@ -40,3 +40,6 @@ Every file, 2 to 3 lines each. Claude Code keeps this updated.
 - `scripts/gcp/prom.py`: stdlib Prometheus client. `query_range` and `mean` functions for other scripts, plus a CLI that prints a mean or a time,value CSV.
 - `scripts/gcp/use_strategy.sh <a|b|none> [threshold]`: switches the autoscaler. Deletes the other one first, applies the HPA or KEDA template, and refuses to leave both active.
 - `scripts/gcp/calibrate.sh`: no autoscaler, 1 replica, Locust at 4, 16, 32, 60 users for 120 s. Writes `results/gcp/calibration.csv` with CPU percent of request, waiting, running, TTFT and SLO share per level. `--help` explains how to pick both thresholds.
+- `loadtest/prompts.json`: 50 varied, realistic user prompts, 107 to 137 words each (about 150 to 200 tokens), so input length is similar across requests.
+- `loadtest/locustfile.py`: closed loop Locust users posting streaming chat requests (128 tokens, temperature 0, ignore_eos). Records TTFT at the first chunk with text, fires a `ttft` event, writes `RESULTS_DIR/requests.csv` on stop. `SHAPE` env picks steady, ramp, spike or calibrate.
+- `loadtest/mock_server.py`: stdlib fake vLLM with streaming, `/health` and `/metrics`. A `--max-seqs` limit makes `vllm:num_requests_waiting` rise under load, for testing Locust, the router and the autoscaler without a GPU.
