@@ -50,8 +50,22 @@ load_config() {
   # Defaults for settings added after the first template, so older relay.env files keep working.
   : "${GPU_POOL_MAX_NODES:=4}" "${CPU_MACHINE:=e2-standard-4}" "${CPU_NODES:=2}"
   : "${MAX_NUM_SEQS:=256}" "${LOCUST_TAG:=2.32.3}" "${MAX_MODEL_LEN:=4096}"
-  : "${KPS_CHART_VERSION:=}" "${KEDA_CHART_VERSION:=}"
-  export GPU_POOL_MAX_NODES CPU_MACHINE CPU_NODES MAX_NUM_SEQS LOCUST_TAG MAX_MODEL_LEN
+  : "${KPS_CHART_VERSION:=}" "${KEDA_CHART_VERSION:=}" "${GPU_PARTITION_SIZE:=}"
+  export GPU_POOL_MAX_NODES CPU_MACHINE CPU_NODES MAX_NUM_SEQS LOCUST_TAG MAX_MODEL_LEN GPU_PARTITION_SIZE
+}
+
+# The --accelerator value for the GPU node pool, with MIG slices when GPU_PARTITION_SIZE is set.
+gpu_accelerator_flag() {
+  local flag="type=${GPU_TYPE},count=1,gpu-driver-version=latest"
+  [[ -n "$GPU_PARTITION_SIZE" ]] && flag="${flag},gpu-partition-size=${GPU_PARTITION_SIZE}"
+  echo "$flag"
+}
+
+# Total nvidia.com/gpu the GPU nodes offer to pods: 1 per L4 node, or the MIG slice count per A100 node.
+gpu_allocatable() {
+  kubectl get nodes -l "cloud.google.com/gke-accelerator=${GPU_TYPE}" \
+    -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{"\n"}{end}' 2>/dev/null \
+    | awk '{s += $1} END {print s + 0}'
 }
 
 # Number of zones in GPU_ZONES. gcloud resize --num-nodes is PER ZONE for multi zone pools.

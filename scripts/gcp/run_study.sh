@@ -10,18 +10,28 @@ Usage: scripts/gcp/run_study.sh <main|warm|sweep> [--dry-run]
   warm   strategy b, spike, 0 or 1 spare GPU node x 3 repeats        =  6 runs (about 3.5 hours)
   sweep  strategy b, spike, thresholds 2 5 10 x 2 repeats             =  6 runs (about 3.5 hours)
 
+With A100 MIG slices (GPU_PARTITION_SIZE set) every replica shares one node, so a spare node changes
+nothing and warm refuses to run unless --force is given.
+
 Order: repeat by repeat, and the order of the compared settings flips on every pair (a then b,
 then b then a, ...), so slow drift in the cloud does not favour one side.
 A run is skipped if its folder has meta.json. The study stops at the first failed or partial run
 so a person can look at it; delete that folder and rerun this script to continue.
   --dry-run  print the plan and which runs are done, then exit. Touches nothing.
+  --force    run warm even with MIG slices
 USAGE
 }
 handle_help "$@"
 [[ $# -ge 1 ]] || { usage; exit 1; }
 study="$1"
-dry_run=0
-[[ "${2:-}" == "--dry-run" ]] && dry_run=1
+dry_run=0 force=0
+for arg in "${@:2}"; do
+  case "$arg" in
+    --dry-run) dry_run=1 ;;
+    --force) force=1 ;;
+    *) die "unknown argument $arg (see --help)" ;;
+  esac
+done
 
 # Each line: strategy pattern repeat [extra args for run_experiment.sh]
 plan() {
@@ -84,6 +94,9 @@ log "study ${study}: ${total} runs, $(( total - ${#todo[@]} )) done, ${#todo[@]}
 [[ ${#todo[@]} -gt 0 ]] || { log "nothing to do"; exit 0; }
 
 load_config
+if [[ "$study" == "warm" && -n "$GPU_PARTITION_SIZE" && "$force" -eq 0 ]]; then
+  die "warm spare does not apply with MIG slices (GPU_PARTITION_SIZE=${GPU_PARTITION_SIZE}): all replicas share one node. Use --force to run it anyway."
+fi
 study_start=$(date +%s)
 spent_s=0
 planned_s=0

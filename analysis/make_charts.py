@@ -7,7 +7,8 @@
 Charts (PNG, sized for a 16:9 slide), skipped with a message when their study has no runs yet:
   1_spike_timeline.png    one spike run per strategy: users, waiting, replicas, p95 TTFT on a shared time axis
   2_slo_violations.png    SLO violation rate by strategy and pattern, mean with min and max over repeats
-  3_gpu_hours.png         GPU hours by strategy and pattern, mean with min and max
+  3_gpu_hours.png         GPU cost by strategy and pattern, mean with min and max: GPU hours, or GPU slice hours
+                          when the runs used A100 MIG slices (see cost_hours in relay_data.py)
   4_coldstart.png         mean cold start phases per scale up, new node versus an existing node
   5_warm_spare.png        time to scale and GPU hours, 0 versus 1 warm spare node
   6_threshold_sweep.png   SLO violation rate against GPU hours, one point per Strategy B threshold
@@ -208,16 +209,16 @@ def chart_threshold_sweep(per_run: pd.DataFrame, out: Path) -> None:
         return
     df["threshold"] = df["variant"].str.extract(r"t([\d.]+)")[0].astype(float)
     fig, ax = plt.subplots(figsize=(11, 6.5))
-    ax.scatter(df["gpu_hours"], df["slo_violation_rate"] * 100, s=60, color=STRATEGY_COLOR["b"], alpha=0.35,
+    ax.scatter(df["cost_hours"], df["slo_violation_rate"] * 100, s=60, color=STRATEGY_COLOR["b"], alpha=0.35,
                edgecolor="white", linewidth=2, label="single run")
-    mean = df.groupby("threshold")[["gpu_hours", "slo_violation_rate"]].mean().sort_index()
-    ax.plot(mean["gpu_hours"], mean["slo_violation_rate"] * 100, color=STRATEGY_COLOR["b"], marker="o",
+    mean = df.groupby("threshold")[["cost_hours", "slo_violation_rate"]].mean().sort_index()
+    ax.plot(mean["cost_hours"], mean["slo_violation_rate"] * 100, color=STRATEGY_COLOR["b"], marker="o",
             markersize=11, markeredgecolor="white", markeredgewidth=2, label="mean per threshold")
     for i, (th, row) in enumerate(mean.iterrows()):
-        ax.annotate(f"threshold {th:g}", (row["gpu_hours"], row["slo_violation_rate"] * 100),
+        ax.annotate(f"threshold {th:g}", (row["cost_hours"], row["slo_violation_rate"] * 100),
                     xytext=(10, 8 if i % 2 == 0 else -22),
                     textcoords="offset points", fontsize=13)
-    ax.set_xlabel("GPU hours per run")
+    ax.set_xlabel(rd.cost_label(df))
     ax.set_ylabel("SLO violation rate (%)")
     ax.set_title("Strategy B threshold: cost against latency, spike")
     ax.set_ylim(bottom=0)
@@ -258,7 +259,7 @@ def main() -> int:
     chart_spike_timeline(runs, figures / "1_spike_timeline.png")
     chart_by_pattern(per_run, "slo_violation_rate", "SLO violation rate (%)\nTTFT over 2 s or failed",
                      "SLO violations by traffic pattern", figures / "2_slo_violations.png", scale=100)
-    chart_by_pattern(per_run, "gpu_hours", "GPU hours per run", "GPU cost by traffic pattern",
+    chart_by_pattern(per_run, "cost_hours", rd.cost_label(per_run), "GPU cost by traffic pattern",
                      figures / "3_gpu_hours.png")
     chart_coldstart(cold, figures / "4_coldstart.png")
     chart_warm_spare(per_run, figures / "5_warm_spare.png")

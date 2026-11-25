@@ -13,7 +13,7 @@ Runs, without touching any cloud resource:
      (and parses the YAML if PyYAML is installed)
   4. checks that config/relay.env is not tracked by git
   5. mock vLLM server + smoke test + 30 s Locust run, checks requests.csv     (skipped by --quick)
-  6. synthetic results + coldstart.py + make_charts.py, checks 6 PNGs exist  (skipped by --quick)
+  6. synthetic results + coldstart.py + make_charts.py, for L4 (6 PNGs) and A100 MIG (5 PNGs)  (skipped by --quick)
 Steps 5 and 6 need: pip install -r requirements.txt
 Prints PASS or FAIL per check and exits 1 if anything failed.
 USAGE
@@ -131,6 +131,14 @@ PY
       if [[ "$n" -eq 6 ]]; then pass "6 charts in analysis/figures/synthetic/"; else fail "expected 6 charts, found $n"; fi
     else
       fail "synthetic analysis pipeline"
+    fi
+    rm -f analysis/figures/synthetic/*.png
+    if "$PY" analysis/make_synthetic.py --mig >/dev/null && "$PY" analysis/make_charts.py --platform synthetic >/dev/null \
+       && grep -q "gpu_slice_hours" analysis/per_run_metrics_synthetic.csv; then
+      n=$(ls analysis/figures/synthetic/*.png 2>/dev/null | wc -l | tr -d ' ')
+      if [[ "$n" -eq 5 ]]; then pass "A100 MIG synthetic: 5 charts (no warm spare)"; else fail "MIG: expected 5 charts, found $n"; fi
+    else
+      fail "A100 MIG synthetic analysis pipeline"
     fi
   else
     skip "pandas or matplotlib not installed (pip install -r requirements.txt)"

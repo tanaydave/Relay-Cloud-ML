@@ -10,7 +10,8 @@ Usage: scripts/gcp/create_cluster.sh
 Creates, if missing:
   1. the required Google APIs
   2. cluster CLUSTER_NAME in GCP_ZONE with CPU_NODES x CPU_MACHINE, image streaming on
-  3. GPU pool GPU_POOL across GPU_ZONES, 1 GPU_TYPE per node, 0 nodes, autoscaling 0..GPU_POOL_MAX_NODES total
+  3. GPU pool GPU_POOL across GPU_ZONES, 1 GPU_TYPE per node (split into MIG slices of GPU_PARTITION_SIZE
+     if set), 0 nodes, autoscaling 0..GPU_POOL_MAX_NODES total. Stops if an existing pool has another GPU type
   4. the optimize-utilization autoscaling profile
   5. kubectl credentials
 All settings come from config/relay.env.
@@ -34,13 +35,19 @@ else
 fi
 
 if gcloud container node-pools describe "$GPU_POOL" --cluster "$CLUSTER_NAME" --zone "$GCP_ZONE" >/dev/null 2>&1; then
-  log "node pool ${GPU_POOL} already exists, skipping create"
+  existing=$(gcloud container node-pools describe "$GPU_POOL" --cluster "$CLUSTER_NAME" --zone "$GCP_ZONE" \
+    --format='value(config.accelerators[0].acceleratorType,config.accelerators[0].gpuPartitionSize)')
+  if [[ "$existing" != "${GPU_TYPE}"* || ( -n "$GPU_PARTITION_SIZE" && "$existing" != *"$GPU_PARTITION_SIZE"* ) ]]; then
+    die "pool ${GPU_POOL} exists with '${existing}', but relay.env asks for ${GPU_TYPE} ${GPU_PARTITION_SIZE}. Delete it first:
+  gcloud container node-pools delete ${GPU_POOL} --cluster ${CLUSTER_NAME} --zone ${GCP_ZONE}"
+  fi
+  log "node pool ${GPU_POOL} already exists (${existing}), skipping create"
 else
   log "creating GPU pool ${GPU_POOL} in ${GPU_ZONES}"
   gcloud container node-pools create "$GPU_POOL" --cluster "$CLUSTER_NAME" --zone "$GCP_ZONE" \
     --node-locations "$GPU_ZONES" \
     --machine-type "$GPU_MACHINE" \
-    --accelerator "type=${GPU_TYPE},count=1,gpu-driver-version=latest" \
+    --accelerator "$(gpu_accelerator_flag)" \
     --num-nodes 0 --enable-autoscaling --total-min-nodes 0 --total-max-nodes "$GPU_POOL_MAX_NODES"
 fi
 

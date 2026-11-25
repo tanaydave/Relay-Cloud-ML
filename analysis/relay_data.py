@@ -11,6 +11,9 @@ Metric definitions, used everywhere in the report:
   gpu_hours           integral of gpu_nodes over the run window (start to end, which includes the 180 s
                       cool down); nodes bill from creation, so this is what the run costs
   replica_hours       integral of replicas_ready over the same window
+  gpu_slice_hours     integral of gpu_slices (vllm pods holding a GPU or MIG slice) over the same window
+  cost_hours          the cost measure used in charts: gpu_slice_hours when the run used MIG slices
+                      (GPU_PARTITION_SIZE set; node hours are then the same for every run), else gpu_hours
   time_to_scale_s     first scale up of the run: metric first above target to new replica Ready
 """
 from __future__ import annotations
@@ -73,6 +76,10 @@ class Run:
         return self.meta.get("variant") or ""
 
     @property
+    def partitioned(self) -> bool:
+        return bool(self.meta.get("settings", {}).get("GPU_PARTITION_SIZE"))
+
+    @property
     def slo_s(self) -> float:
         return float(self.meta.get("settings", {}).get("SLO_TTFT_S") or 2)
 
@@ -122,6 +129,8 @@ def run_metrics(run: Run) -> dict:
         "p50_latency_s": ok["latency_s"].quantile(0.5), "p95_latency_s": ok["latency_s"].quantile(0.95),
         "gpu_hours": integrate_hours(ts, "gpu_nodes", start, end),
         "replica_hours": integrate_hours(ts, "replicas_ready", start, end),
+        "gpu_slice_hours": integrate_hours(ts, "gpu_slices", start, end),
+        "partitioned": run.partitioned,
         "max_replicas": float(ts["replicas_ready"].max()) if not ts.empty else float("nan"),
         "scale_ups": len(run.scaleups),
         "time_to_scale_s": first_scale,
@@ -129,7 +138,19 @@ def run_metrics(run: Run) -> dict:
 
 
 def metrics_table(runs: list[Run]) -> pd.DataFrame:
-    return pd.DataFrame([run_metrics(r) for r in runs])
+    df = pd.DataFrame([run_metrics(r) for r in runs])
+    if not df.empty:
+        df["cost_hours"] = np.where(df["partitioned"], df["gpu_slice_hours"], df["gpu_hours"])
+    return df
+
+
+def cost_label(per_run: pd.DataFrame) -> str:
+    """Axis label for cost_hours; says so when runs mix whole GPUs and MIG slices."""
+    if per_run.empty or not per_run["partitioned"].any():
+        return "GPU hours per run"
+    if per_run["partitioned"].all():
+        return "GPU slice hours per run"
+    return "GPU or slice hours per run (mixed)"
 
 
 def summary_table(per_run: pd.DataFrame) -> pd.DataFrame:
@@ -138,12 +159,13 @@ def summary_table(per_run: pd.DataFrame) -> pd.DataFrame:
         return per_run
     keys = ["study", "strategy", "pattern", "variant"]
     value_cols = ["slo_violation_rate", "p50_ttft_s", "p95_ttft_s", "p50_latency_s", "p95_latency_s",
-                  "gpu_hours", "replica_hours", "max_replicas", "time_to_scale_s", "failed", "requests"]
+                  "gpu_hours", "gpu_slice_hours", "cost_hours", "replica_hours", "max_replicas",
+                  "time_to_scale_s", "failed", "requests"]
     g = per_run.groupby(keys, dropna=False)
     out = g.size().rename("runs").to_frame()
     for col in value_cols:
         out[f"{col}_mean"] = g[col].mean()
-        if col in ("slo_violation_rate", "gpu_hours", "time_to_scale_s", "p95_ttft_s"):
+        if col in ("slo_violation_rate", "gpu_hours", "cost_hours", "time_to_scale_s", "p95_ttft_s"):
             out[f"{col}_min"] = g[col].min()
             out[f"{col}_max"] = g[col].max()
     return out.reset_index().round(4)

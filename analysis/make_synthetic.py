@@ -2,6 +2,7 @@
 """Write a FAKE results tree to results/synthetic/ so the analysis can be tested before real runs exist.
 
     python3 analysis/make_synthetic.py && python3 analysis/make_charts.py --platform synthetic
+    python3 analysis/make_synthetic.py --mig     # one A100 node with 3 MIG slices instead of one L4 per replica
 
 Every file follows the GCP format (meta.json, requests.csv, timeseries.csv, events.json) and every
 meta.json has "synthetic": true. The numbers come from a toy simulation, NOT from measurements:
@@ -43,8 +44,10 @@ def iso(t: float) -> str:
 
 
 class Sim:
-    def __init__(self, strategy: str, pattern: str, threshold: float, spare: int, seed: str) -> None:
+    def __init__(self, strategy: str, pattern: str, threshold: float, spare: int, seed: str,
+                 slots_per_node: int = 1) -> None:
         self.rng = random.Random(seed)
+        self.slots_per_node = slots_per_node  # 3 for an A100 split into MIG slices
         self.strategy, self.pattern, self.threshold = strategy, pattern, threshold
         self.start = 1795000000 + self.rng.randint(0, 10**6)
         self.baseline_nodes = 1 + spare
@@ -64,6 +67,10 @@ class Sim:
     def wanted(self, t: float) -> int:
         return sum(1 for r in self.replicas if r["created"] <= t and (r["deleted"] is None or r["deleted"] > t))
 
+    def slices(self, t: float) -> int:
+        """Pods holding a GPU or slice: scheduled and not yet deleted."""
+        return sum(1 for r in self.replicas if r["scheduled"] <= t and (r["deleted"] is None or r["deleted"] > t))
+
     def gpu_nodes(self, t: float) -> int:
         return sum(1 for n in self.nodes if n["created"] <= t and (n["deleted"] is None or n["deleted"] > t))
 
@@ -76,7 +83,8 @@ class Sim:
 
     def add_replica(self, t: int) -> None:
         free = [n for n in self.nodes if (n["deleted"] is None or n["deleted"] > t) and n["created"] <= t
-                and not any(r["node"] == n["name"] and (r["deleted"] is None or r["deleted"] > t) for r in self.replicas)]
+                and sum(1 for r in self.replicas if r["node"] == n["name"]
+                        and (r["deleted"] is None or r["deleted"] > t)) < self.slots_per_node]
         name = f"vllm-{len(self.replicas):02d}{self.rng.randint(100, 999)}"
         created = t + 1
         if free:
@@ -185,12 +193,13 @@ def write_run(sim: Sim, out: Path, meta: dict) -> None:
     # timeseries at 15 s
     with (out / "timeseries.csv").open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["time", "replicas_ready", "waiting", "running", "cpu", "gpu_nodes", "p95_ttft"])
+        w.writerow(["time", "replicas_ready", "waiting", "running", "cpu", "gpu_nodes", "p95_ttft", "gpu_slices"])
         for t in range(sim.start, sim.end + 1, 15):
             waiting, running, cpu = sim.load(t)
             recent = sorted(float(x[1]) for x in rows if t - 60 <= x[0] <= t and x[1])
             p95 = f"{recent[int(0.95 * (len(recent) - 1))]:.3f}" if recent else ""
-            w.writerow([t, sim.ready(t), int(waiting), int(running), f"{cpu:.1f}", sim.gpu_nodes(t), p95])
+            w.writerow([t, sim.ready(t), int(waiting), int(running), f"{cpu:.1f}", sim.gpu_nodes(t), p95,
+                        sim.slices(t)])
     doc = {"platform": "gcp", "synthetic": True, "events": sim.events,
            "pod_watch": [{"type": "ADDED", "object": pod_object(r)} for r in sim.replicas],
            "pods_at_end": [], "nodes_at_end": [],
@@ -202,14 +211,15 @@ def write_run(sim: Sim, out: Path, meta: dict) -> None:
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
 
 
-def plan() -> list[tuple[str, str, str, int, float, int, str]]:
+def plan(mig: bool = False) -> list[tuple[str, str, str, int, float, int, str]]:
     runs = []
     for r in (1, 2, 3):
         for p in ("steady", "ramp", "spike"):
             for s in ("a", "b"):
                 runs.append(("main", s, p, r, 5.0, 0, ""))
-        for spare in (0, 1):
-            runs.append(("warm", "b", "spike", r, 5.0, spare, f"spare{spare}"))
+        if not mig:  # warm spare does not apply when all replicas share one node
+            for spare in (0, 1):
+                runs.append(("warm", "b", "spike", r, 5.0, spare, f"spare{spare}"))
     for r in (1, 2):
         for th in (2, 5, 10):
             runs.append(("sweep", "b", "spike", r, float(th), 0, f"t{th}"))
@@ -217,18 +227,22 @@ def plan() -> list[tuple[str, str, str, int, float, int, str]]:
 
 
 def main() -> int:
-    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--mig", action="store_true", help="one A100 node split into 3 MIG slices")
+    args = ap.parse_args()
     shutil.rmtree(ROOT, ignore_errors=True)
-    for study, s, p, r, th, spare, variant in plan():
+    runs = plan(args.mig)
+    for study, s, p, r, th, spare, variant in runs:
         name = f"{s}_{p}_r{r}" + (f"_{variant}" if variant else "")
-        sim = Sim(s, p, th, spare, seed=f"{study}/{name}")
+        sim = Sim(s, p, th, spare, seed=f"{study}/{name}", slots_per_node=3 if args.mig else 1)
         sim.run()
         meta = {"study": study, "strategy": s, "pattern": p, "repeat": r, "variant": variant,
                 "spare_gpu_nodes": spare, "queue_threshold": th if s == "b" else None,
                 "cpu_target_percent": 60.0 if s == "a" else None,
-                "settings": {"QUEUE_THRESHOLD": str(th), "CPU_TARGET_PERCENT": "60", "SLO_TTFT_S": "2"}}
+                "settings": {"QUEUE_THRESHOLD": str(th), "CPU_TARGET_PERCENT": "60", "SLO_TTFT_S": "2",
+                             "GPU_PARTITION_SIZE": "2g.10gb" if args.mig else ""}}
         write_run(sim, ROOT / study / name, meta)
-    print(f"wrote {len(plan())} synthetic runs to {ROOT}")
+    print(f"wrote {len(runs)} synthetic runs to {ROOT}" + (" (MIG)" if args.mig else ""))
     return 0
 
 

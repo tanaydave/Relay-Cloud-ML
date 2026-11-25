@@ -27,22 +27,27 @@ Optional: `scripts/gcp/run_study.sh main --dry-run` prints the 18 planned runs i
 
 Before step 2.1: copy `config/relay.env.example` to `config/relay.env` and fill in `GCP_PROJECT_ID`, a pinned
 `VLLM_TAG` (a release tag from hub.docker.com/r/vllm/vllm-openai, never `latest`), `KPS_CHART_VERSION` and
-`KEDA_CHART_VERSION`. Check that L4 quota is approved (README, Prerequisites).
+`KEDA_CHART_VERSION`. Check that GPU quota is approved (README, Prerequisites): for the default A100 plan the
+Quotas page must show at least 1 for both `GPUs (all regions)` and `NVIDIA A100 GPUs` in your region.
+Check the A100 is offered in your zone: `gcloud compute accelerator-types list --filter="name=nvidia-tesla-a100 AND zone~us-central1"`,
+and put one of those zones in both `GCP_ZONE` and `GPU_ZONES`.
 
 ### 2.1 Cluster. About 10 minutes; the CPU nodes bill from now on
 ```bash
 scripts/gcp/create_cluster.sh
 ```
-**Success:** ends with `kubectl get nodes` showing 2 Ready CPU nodes and `done. Next: scripts/gcp/gpu_proof.sh`.
+**Success:** ends with `kubectl get nodes` showing the Ready CPU node(s) and `done. Next: scripts/gcp/gpu_proof.sh`.
 Rerun it once: every step should say `already exists, skipping`.
 
-### 2.2 Three GPU proof. About 10 minutes, 3 L4 nodes briefly
+### 2.2 Three GPU proof. About 10 minutes, GPU node(s) briefly
 ```bash
 scripts/gcp/gpu_proof.sh
 ```
-**Success:** `SUCCESS: 3 GPU nodes Ready` and a table with 3 nodes in 3 different zones. Screenshot it for the professor.
-Then `kubectl get nodes` should show the GPU nodes going away within a few minutes.
-**If it fails:** a zone without L4 capacity. Remove it from `GPU_ZONES`, or retry later.
+**Success:** `SUCCESS: 3 GPUs available for 3 replicas`. With the A100 the tables show 1 node, partition size
+`2g.10gb`, and `GPUS_FOR_PODS` = 3. With L4 they show 3 nodes in 3 zones, 1 GPU each. Screenshot it for the professor.
+Then `kubectl get nodes` should show the GPU node(s) going away within a few minutes.
+**If it fails:** no capacity in that zone (try another zone that offers the GPU), or with MIG the slices are not
+ready yet: rerun with `--keep`, wait 5 minutes, check `GPUS_FOR_PODS` again, then run `scale_gpu_zero.sh`.
 
 ### 2.3 Image copy. About 5 minutes, free apart from storage
 ```bash
@@ -73,7 +78,8 @@ Also check the startup log for FP16: `kubectl logs deploy/vllm | grep -i dtype` 
 scripts/gcp/import_dashboard.sh
 kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80   # then open http://127.0.0.1:3000/d/relay
 ```
-**Success:** the import prints `"status":"success"`. All 6 panels show data. **GPU node count** should read 1.
+**Success:** the import prints `"status":"success"`. All 7 panels show data. **GPU node count** should read 1, and
+**GPUs or MIG slices held by vLLM** should read 1 with one replica.
 If it is empty, kube-state-metrics is not exporting the node label: check `monitoring/kps-values.yaml` was applied.
 
 ### 2.7 Calibration. About 15 minutes, 1 L4 node
@@ -101,7 +107,8 @@ With `b`, `kubectl get hpa` should show a TARGETS value like `0/5 (avg)`, not `<
 scripts/gcp/reset_run.sh 1
 scripts/gcp/reset_run.sh 2     # warm spare; then run reset_run.sh 1 again
 ```
-**Success:** both end with `stable for 60 s`. With 2, `kubectl get nodes` shows 2 GPU nodes and no `gpu-warmup` pod.
+**Success:** ends with `stable for 60 s`. The second command (warm spare) is only for L4; skip it with the A100.
+With 2, `kubectl get nodes` shows 2 GPU nodes and no `gpu-warmup` pod.
 Extra nodes from a previous run are removed by the cluster autoscaler, which can take 10 minutes or more.
 
 ### 2.10 Practice run. About 25 minutes, 1 to 3 L4 nodes
@@ -115,15 +122,17 @@ python3 analysis/coldstart.py --platform gcp
 - `results/gcp/practice/b_spike_r1/` has `meta.json`, `requests.csv`, `timeseries.csv`, `events.json`
 - `timeseries.csv`: about 60 rows; `replicas_ready`, `waiting` and `gpu_nodes` are not all 0
 - `events.json` contains `pod_watch` and `node_watch` entries (open it and search for `"pod_watch"`)
-- `results/gcp/coldstart.csv` has one row per scale up with `node_start_s` and `model_load_s` filled
+- `results/gcp/coldstart.csv` has one row per scale up with `model_load_s` filled (`node_start_s` is a few seconds
+  with the A100, since the slice is already there; about 2 minutes with L4)
+- `timeseries.csv` column `gpu_slices` follows the replica count
 
 Repeat once with strategy `a` (`run_experiment.sh practice a spike 1`).
 
 ### 2.11 Studies. About 17 hours in total, 1 to 3 L4 nodes
 ```bash
 scripts/gcp/run_study.sh main     # 18 runs, about 9 to 10 hours
-scripts/gcp/run_study.sh warm     # 6 runs
 scripts/gcp/run_study.sh sweep    # 6 runs
+scripts/gcp/run_study.sh warm     # 6 runs, L4 only; with the A100 it refuses, which is expected
 python3 analysis/make_charts.py
 ```
 **Success:** every run folder has `meta.json` and no `FAILED`. `analysis/figures/` has the 6 charts.
@@ -158,6 +167,10 @@ These were designed carefully but could only be tested on fake data or not at al
 | 13 | When the spike drops at 420 s, Locust stops users mid request and those requests are not recorded. Small bias, the same for both strategies | known limit, mention in report |
 | 14 | `p95_ttft` uses a 1 minute rate window, so the timeline lags the true TTFT by up to a minute. Use `requests.csv` for the headline numbers | known limit |
 | 15 | HPA checks every 15 s on GKE by default and this cannot be changed; KEDA's `pollingInterval` is set to 15 s to match | design |
+| 16 | GKE creates the A100 node with 3 `2g.10gb` MIG slices and offers them as `nvidia.com/gpu: 3` | 2.2 `gpu_proof.sh` |
+| 17 | vLLM runs on a 10 GB MIG slice with its default memory setting (model about 3 GB, the rest for KV cache) | 2.5 logs |
+| 18 | The 3 slices give independent capacity, so a second replica really adds throughput | 2.7 and 2.10: TTFT drops when replicas rise |
+| 19 | One `e2-standard-4` CPU node fits Prometheus, Grafana, KEDA and Locust. If pods stay Pending, set `CPU_NODES=2` | 2.4 |
 
 ## Choices made while building, which differ slightly from the original prompts
 
@@ -168,3 +181,5 @@ These were designed carefully but could only be tested on fake data or not at al
 - The warm spare is created with the pool's total minimum plus temporary pause pods, because `gcloud resize` works
   per zone and cannot target 1 or 2 nodes in total.
 - The NYU HPC autoscaling version was not built (GCP only, the team's decision).
+- After L4 quota was denied, the default GPU became one A100 split into 3 MIG slices. With it, the cold start has
+  no node start or image pull, cost is GPU slice hours, and the warm spare study is skipped. State this in the report.

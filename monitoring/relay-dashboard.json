@@ -272,7 +272,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "count(kube_node_labels{label_cloud_google_com_gke_accelerator=\"nvidia-l4\"})",
+          "expr": "count(kube_node_labels{label_cloud_google_com_gke_accelerator=~\"nvidia.*\"})",
           "legendFormat": "GPU nodes",
           "interval": "15s"
         }
@@ -321,6 +321,53 @@
           },
           "expr": "sum(rate(container_cpu_usage_seconds_total{container=\"vllm\"}[1m]))",
           "legendFormat": "CPU cores",
+          "interval": "15s"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "GPUs or MIG slices held by vLLM",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count(kube_pod_status_phase{namespace=\"default\",pod=~\"vllm-.*\",phase=\"Running\"} == 1)",
+          "legendFormat": "GPU slices",
           "interval": "15s"
         }
       ]

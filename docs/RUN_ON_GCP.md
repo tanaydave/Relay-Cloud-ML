@@ -33,13 +33,19 @@ gcloud services enable container.googleapis.com artifactregistry.googleapis.com 
 Then in the console:
 
 1. Billing, then Budgets: alerts at 50 and 90 percent.
-2. IAM and Admin, then Quotas: `GPUS_ALL_REGIONS` at least 4, `NVIDIA_L4_GPUS` in us-central1 at least 4.
+2. Billing: a free trial account cannot use GPUs. Click Activate full account; the credits stay.
+3. IAM and Admin, then Quotas. Default A100 plan: `GPUs (all regions)` at least 1 and `NVIDIA A100 GPUs` in your
+   region at least 1. L4 plan: 4 of each.
 
-Check which zones have L4s, and put only those in `GPU_ZONES`:
+Check which zones have the GPU, and put one of them in `GCP_ZONE` and `GPU_ZONES` (A100), or all of them in `GPU_ZONES` (L4):
 
 ```bash
+gcloud compute accelerator-types list --filter="name=nvidia-tesla-a100 AND zone~us-central1"
 gcloud compute accelerator-types list --filter="name=nvidia-l4 AND zone~us-central1"
 ```
+
+The commands in sections 2 and 3 show the L4 version; `scripts/gcp/create_cluster.sh` and `scripts/gcp/gpu_proof.sh`
+do the same with whatever GPU `relay.env` selects, including the A100 MIG slices.
 
 ## 2. Cluster and GPU pool
 

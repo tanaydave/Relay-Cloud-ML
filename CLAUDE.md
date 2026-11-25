@@ -20,7 +20,8 @@ Research question: does scaling on waiting requests keep response times low with
 
 ## Two platforms
 
-1. GCP, the primary platform for graded results: GKE, one L4 GPU per replica, HPA for Strategy A, KEDA for Strategy B, kube-prometheus-stack for metrics.
+1. GCP, the primary platform for graded results: GKE, HPA for Strategy A, KEDA for Strategy B, kube-prometheus-stack for metrics.
+   GPU, decided Nov 25, 2026 after L4 quota requests were denied: ONE A100 40GB node split into 3 MIG slices (`2g.10gb`), one replica per slice, which needs a quota of only 1 A100. One L4 per replica stays supported by changing `relay.env` (see the commented block there). With MIG, scale ups never need a new node, cost is measured in GPU slice hours, and study 3 (warm spare) does not apply.
 2. NYU HPC Torch, for free GPU development, calibration, and a fallback experiment: Slurm jobs, Apptainer, one GPU job per replica, our own Python autoscaler implementing the same two strategies, and a small Python router.
 
 Decision, Nov 25, 2026: all graded results come from GCP. The HPC router, autoscaler and control job are NOT built; do not build them unless asked. `hpc/` keeps only single replica testing.
@@ -58,7 +59,7 @@ Studies:
 
 1. Main: strategies a and b, patterns steady ramp spike, 3 repeats each, 18 runs.
 2. Cold start breakdown: derived from every scale up in studies 1 and 3.
-3. Warm spare: strategy b, spike, 0 or 1 spare GPU node, 3 repeats each.
+3. Warm spare: strategy b, spike, 0 or 1 spare GPU node, 3 repeats each. Only with one GPU per node (L4); skipped with A100 MIG.
 4. Threshold sweep: strategy b, spike, thresholds 2 5 10, 2 repeats each.
 
 Results layout, one folder per run:
@@ -67,11 +68,11 @@ Results layout, one folder per run:
 results/<platform>/<study>/<strategy>_<pattern>_r<repeat>[_<variant>]/
   meta.json        all settings, start and end times, git commit, platform
   requests.csv     start, ttft_s, latency_s, ok
-  timeseries.csv   time, replicas_ready, waiting, running, cpu, gpu_nodes, p95_ttft
+  timeseries.csv   time, replicas_ready, waiting, running, cpu, gpu_nodes, p95_ttft, gpu_slices
   events.json      Kubernetes events or Slurm job timeline, for cold start analysis
 ```
 
-Metrics: SLO violation rate is the share of requests with ttft over 2 s; also p50 and p95 latency, failed requests, time to scale, GPU hours.
+Metrics: SLO violation rate is the share of requests with ttft over 2 s; also p50 and p95 latency, failed requests, time to scale, GPU hours (GPU slice hours with MIG). Definitions live in `analysis/relay_data.py`.
 
 ## Coding conventions
 

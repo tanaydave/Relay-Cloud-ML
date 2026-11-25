@@ -5,7 +5,7 @@ Needs Prometheus reachable at --prom-url; run_experiment.sh port-forwards it fir
     kubectl port-forward -n monitoring svc/monitoring-kube-prometheus-prometheus 9090:9090 &
     python3 scripts/gcp/export_metrics.py --start 1700000000 --end 1700001000 --out results/.../timeseries.csv
 
-Columns (CLAUDE.md): time, replicas_ready, waiting, running, cpu, gpu_nodes, p95_ttft
+Columns (CLAUDE.md): time, replicas_ready, waiting, running, cpu, gpu_nodes, p95_ttft, gpu_slices
   time            unix seconds
   replicas_ready  available vllm replicas (kube-state-metrics)
   waiting         sum of vllm:num_requests_waiting over replicas
@@ -13,6 +13,8 @@ Columns (CLAUDE.md): time, replicas_ready, waiting, running, cpu, gpu_nodes, p95
   cpu             average CPU use of running vllm pods, percent of their CPU request (what HPA compares to its target)
   gpu_nodes       GPU nodes that exist, Ready or not (they bill from creation)
   p95_ttft        p95 time to first token over the last minute, seconds; blank when there was no traffic
+  gpu_slices      vllm pods in phase Running, each holding one GPU or one MIG slice (from scheduling, not
+                  only once Ready); the cost measure when replicas share one A100
 """
 from __future__ import annotations
 
@@ -24,8 +26,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from prom import query_range  # noqa: E402
 
-COLUMNS = ["time", "replicas_ready", "waiting", "running", "cpu", "gpu_nodes", "p95_ttft"]
-ZERO_WHEN_MISSING = {"replicas_ready", "waiting", "running", "gpu_nodes"}
+COLUMNS = ["time", "replicas_ready", "waiting", "running", "cpu", "gpu_nodes", "p95_ttft", "gpu_slices"]
+ZERO_WHEN_MISSING = {"replicas_ready", "waiting", "running", "gpu_nodes", "gpu_slices"}
 
 
 def queries(namespace: str, gpu_type: str) -> dict[str, str]:
@@ -39,6 +41,7 @@ def queries(namespace: str, gpu_type: str) -> dict[str, str]:
                 f' / sum by (pod) (kube_pod_container_resource_requests{{{ns},container="vllm",resource="cpu"}}))'),
         "gpu_nodes": f'count(kube_node_labels{{label_cloud_google_com_gke_accelerator="{gpu_type}"}})',
         "p95_ttft": "histogram_quantile(0.95, sum(rate(vllm:time_to_first_token_seconds_bucket[1m])) by (le))",
+        "gpu_slices": f'count(kube_pod_status_phase{{{ns},pod=~"vllm-.*",phase="Running"}} == 1)',
     }
 
 

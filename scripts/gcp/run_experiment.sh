@@ -194,7 +194,7 @@ meta = {
         "MODEL_ID", "VLLM_TAG", "VLLM_IMAGE", "MAX_MODEL_LEN", "MAX_NUM_SEQS", "MIN_REPLICAS", "MAX_REPLICAS",
         "CPU_TARGET_PERCENT", "QUEUE_THRESHOLD", "CHECK_INTERVAL_S", "SCALE_DOWN_WINDOW_S", "SLO_TTFT_S",
         "LOCUST_TAG", "GCP_REGION", "GCP_ZONE", "GPU_ZONES", "CLUSTER_NAME", "GPU_POOL", "GPU_MACHINE",
-        "GPU_TYPE", "GPU_POOL_MAX_NODES"]},
+        "GPU_TYPE", "GPU_PARTITION_SIZE", "GPU_POOL_MAX_NODES"]},
     "autoscaler": json.loads(e["AUTOSCALER_JSON"]).get("items", []),
 }
 with open(sys.argv[1], "w") as f:
