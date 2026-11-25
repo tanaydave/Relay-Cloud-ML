@@ -17,3 +17,7 @@ hf_cache/
 
 # os
 .DS_Store
+
+# job logs (folder kept with .gitkeep)
+logs/*
+!logs/.gitkeep
