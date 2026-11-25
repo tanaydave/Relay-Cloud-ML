@@ -111,13 +111,39 @@ envsubst < k8s/loadgen.yaml | kubectl apply -f -
 
 ## 7. Run experiments
 
-These scripts are written by Claude Code in Step 3 to 5 of `docs/PROMPTS_STEP_BY_STEP.md`.
+### 7a. One practice run first (about 25 minutes, 1 to 3 GPU nodes)
+
+Do this once before any graded study. It goes into `results/gcp/practice/`, which the main analysis ignores.
 
 ```bash
-scripts/gcp/use_strategy.sh a          # or b
-scripts/gcp/run_experiment.sh main a spike 1
-scripts/gcp/run_study.sh main          # all 18 runs, alternating a and b
+scripts/gcp/reset_run.sh 1                          # optional: check the reset alone first, ends with "stable for 60 s"
+scripts/gcp/run_experiment.sh practice b spike 1    # the whole run; prints progress every 30 s
+python3 analysis/coldstart.py --platform gcp        # cold start rows for every finished run
 ```
+
+Success looks like:
+- the progress lines show `vllm ready` rising from 1 to 2 or 3 during the spike (strategy b), then falling after it
+- the last lines print `requests N, failed 0, SLO violation rate ...` and `=== done: .../practice/b_spike_r1 ===`
+- the folder holds `meta.json`, `requests.csv`, `timeseries.csv`, `events.json`, plus Locust's own CSVs and log
+- `timeseries.csv` has about 60 rows and `replicas_ready`, `waiting` and `gpu_nodes` are not all 0
+- `results/gcp/coldstart.csv` has one row per scale up, with node_start_s and model_load_s filled in
+
+If `vllm ready` never rises above 1, look at `waiting` in `timeseries.csv`. If it stays at 0, Strategy B has
+nothing to react to: lower `MAX_NUM_SEQS` in `relay.env`, rerun `scripts/gcp/deploy_serving.sh`, and recalibrate.
+
+A failed run leaves a `FAILED` file. Look at the cluster, delete the folder, and rerun.
+
+### 7b. The studies
+
+```bash
+scripts/gcp/run_study.sh main --dry-run   # prints the plan and what is already done, touches nothing
+scripts/gcp/run_study.sh main             # 18 runs, about 9 to 10 hours; safe to stop and restart
+scripts/gcp/run_study.sh warm             # 6 runs
+scripts/gcp/run_study.sh sweep            # 6 runs
+```
+
+Run long studies inside `tmux` or Cloud Shell so a closed laptop does not stop them. Locust itself runs inside
+the loadgen pod, so a dropped connection only stops the progress printing; rerun the study and finish that run by hand.
 
 ## 8. End of every work session
 

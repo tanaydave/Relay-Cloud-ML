@@ -43,3 +43,9 @@ Every file, 2 to 3 lines each. Claude Code keeps this updated.
 - `loadtest/prompts.json`: 50 varied, realistic user prompts, 107 to 137 words each (about 150 to 200 tokens), so input length is similar across requests.
 - `loadtest/locustfile.py`: closed loop Locust users posting streaming chat requests (128 tokens, temperature 0, ignore_eos). Records TTFT at the first chunk with text, fires a `ttft` event, writes `RESULTS_DIR/requests.csv` on stop. `SHAPE` env picks steady, ramp, spike or calibrate.
 - `loadtest/mock_server.py`: stdlib fake vLLM with streaming, `/health` and `/metrics`. A `--max-seqs` limit makes `vllm:num_requests_waiting` rise under load, for testing Locust, the router and the autoscaler without a GPU.
+- `scripts/gcp/export_metrics.py`: queries Prometheus at a 15 s step for one run's time window and writes `timeseries.csv` (time, replicas_ready, waiting, running, cpu as percent of request, gpu_nodes, p95_ttft). Needs Prometheus port-forwarded.
+- `scripts/gcp/run_experiment.sh <study> <strategy> <pattern> <repeat> [--spare] [--threshold]`: one full run. Resets the cluster, picks the strategy, runs Locust detached in the loadgen pod, waits 180 s, then collects requests, metrics, events and meta into the run folder. Watches pods and nodes during the run so scaled down pods still appear in `events.json`.
+- `scripts/gcp/run_study.sh <main|warm|sweep> [--dry-run]`: runs a whole study in counterbalanced order, skips finished runs (folders with meta.json), stops at partial ones, and prints estimated time left.
+
+### analysis/
+- `analysis/coldstart.py --platform gcp|hpc`: for every scale up in every run, splits the time to a ready replica into decision, node start, image pull, model load and other. Writes `results/<platform>/coldstart.csv`. Its docstring defines the HPC `events.json` format.
