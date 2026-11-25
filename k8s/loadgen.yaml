@@ -1,4 +1,5 @@
 # Locust pod on the CPU pool. Runs are started with kubectl exec so laptop networks never affect results.
+# Template, image tag from LOCUST_TAG:   envsubst < k8s/loadgen.yaml | kubectl apply -f -
 # Create the files first:
 #   kubectl create configmap locust-files --from-file=loadtest/ --dry-run=client -o yaml | kubectl apply -f -
 apiVersion: apps/v1
@@ -18,7 +19,7 @@ spec:
         cloud.google.com/gke-nodepool: default-pool
       containers:
       - name: locust
-        image: locustio/locust
+        image: locustio/locust:${LOCUST_TAG}
         command: ["sleep", "infinity"]
         resources:
           requests: {cpu: "1", memory: 1Gi}

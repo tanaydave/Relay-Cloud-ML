@@ -106,7 +106,7 @@ Grafana: `kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80`, us
 
 ```bash
 kubectl create configmap locust-files --from-file=loadtest/ --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f k8s/loadgen.yaml
+envsubst < k8s/loadgen.yaml | kubectl apply -f -
 ```
 
 ## 7. Run experiments

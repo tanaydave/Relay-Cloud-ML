@@ -31,4 +31,6 @@ apptainer exec --nv --bind "/scratch/${NETID}" "$HPC_SIF" \
   vllm serve "$HPC_MODEL_DIR" \
     --served-model-name "$MODEL_ID" \
     --host 0.0.0.0 --port "$PORT" \
-    --max-model-len "$MAX_MODEL_LEN"
+    --dtype float16 \
+    --max-model-len "$MAX_MODEL_LEN" \
+    --max-num-seqs "${MAX_NUM_SEQS:-256}"

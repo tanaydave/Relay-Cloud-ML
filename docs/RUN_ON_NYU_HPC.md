@@ -47,7 +47,7 @@ srun --account="$SLURM_ACCOUNT" --gres=gpu:1 --constraint="$HPC_GPU_CONSTRAINT" 
 # inside the GPU job
 export HF_HOME=/scratch/$NETID/hf_cache HF_HUB_OFFLINE=1
 apptainer exec --nv --bind /scratch/$NETID "$HPC_SIF" \
-  vllm serve "$HPC_MODEL_DIR" --served-model-name "$MODEL_ID" --port 8000 --max-model-len 4096 &
+  vllm serve "$HPC_MODEL_DIR" --served-model-name "$MODEL_ID" --port 8000 --dtype float16 --max-model-len 4096 &
 # wait for "Application startup complete", then:
 curl localhost:8000/v1/chat/completions -H 'Content-Type: application/json' \
   -d "{\"model\":\"$MODEL_ID\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}],\"max_tokens\":32}"

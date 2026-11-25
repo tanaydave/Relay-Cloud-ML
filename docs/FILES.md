@@ -16,3 +16,13 @@ Every file, 2 to 3 lines each. Claude Code keeps this updated.
 - `docs/RUN_ON_NYU_HPC.md`: Torch run guide and how the HPC version differs.
 - `docs/PROMPTS_STEP_BY_STEP.md`: Claude Code prompts, one per build step.
 - `docs/PROMPT_ALL_AT_ONCE.md`: one Claude Code prompt that builds everything.
+- `requirements.txt`: pinned Python packages for Locust, analysis, the HPC router and autoscaler. Locust version matches `LOCUST_TAG`.
+
+### scripts/gcp/
+- `scripts/gcp/common.sh`: sourced by every GCP script. Loads and checks `config/relay.env`, and holds helpers for --help, GPU node counts, pool resize and bounds, port-forward, removing autoscalers, refreshing the loadgen pod.
+- `scripts/gcp/create_cluster.sh`: enables APIs, creates the cluster, the multi zone L4 pool (0 nodes, autoscaling 0 to `GPU_POOL_MAX_NODES`), sets optimize-utilization, gets credentials. Skips what exists.
+- `scripts/gcp/gpu_proof.sh`: resizes the GPU pool to 1 node per zone, waits up to 15 min for all Ready, prints nodes and zones for the screenshot, then resizes to 0 (even on Ctrl-C).
+- `scripts/gcp/copy_image.sh`: creates the Artifact Registry repo if missing and crane copies the pinned vLLM image into it, so GKE image streaming works. Prints both digests.
+- `scripts/gcp/scale_gpu_zero.sh`: end of session. Deletes HPA and ScaledObject, scales vllm to 0, sets GPU pool min to 0 and resizes it to 0.
+- `scripts/gcp/reset_run.sh <baseline>`: before each run. Removes autoscalers, 1 vllm replica, sets GPU pool min to baseline, uses temporary gpu-warmup pause pods to pull in a warm spare, waits until state is stable 60 s.
+- `scripts/gcp/teardown.sh`: asks you to type the cluster name, then deletes the cluster and Artifact Registry repo.

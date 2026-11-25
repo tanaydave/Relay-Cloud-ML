@@ -18,7 +18,8 @@ spec:
       containers:
       - name: vllm
         image: ${VLLM_IMAGE}
-        args: ["--model", "${MODEL_ID}", "--max-model-len", "${MAX_MODEL_LEN}", "--port", "8000"]
+        args: ["--model", "${MODEL_ID}", "--dtype", "float16", "--max-model-len", "${MAX_MODEL_LEN}",
+               "--max-num-seqs", "${MAX_NUM_SEQS}", "--port", "8000"]
         ports:
         - {name: http, containerPort: 8000}
         resources:
