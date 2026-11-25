@@ -23,6 +23,8 @@ Research question: does scaling on waiting requests keep response times low with
 1. GCP, the primary platform for graded results: GKE, one L4 GPU per replica, HPA for Strategy A, KEDA for Strategy B, kube-prometheus-stack for metrics.
 2. NYU HPC Torch, for free GPU development, calibration, and a fallback experiment: Slurm jobs, Apptainer, one GPU job per replica, our own Python autoscaler implementing the same two strategies, and a small Python router.
 
+Decision, Nov 25, 2026: all graded results come from GCP. The HPC router, autoscaler and control job are NOT built; do not build them unless asked. `hpc/` keeps only single replica testing.
+
 Shared code must not assume one platform. Platform specific code lives in `k8s/` and `scripts/gcp/` for GCP, and `hpc/` for Torch.
 
 ## Repo layout

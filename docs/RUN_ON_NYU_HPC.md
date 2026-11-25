@@ -1,5 +1,11 @@
 # Running Relay on NYU HPC Torch
 
+> **Status, Nov 25, 2026: the team chose GCP for all results. The HPC autoscaling version was not built.**
+> What exists: `hpc/download_model.sh` and `hpc/vllm_replica.sbatch`, enough for sections 1 to 3 below
+> (one replica, smoke test, calibration by hand with `loadtest/locustfile.py` and `SHAPE=calibrate`).
+> `hpc/router.py`, `hpc/autoscaler.py`, `hpc/control.sbatch` and `hpc/run_study.sh` in section 4 do not exist.
+> `analysis/coldstart.py` already defines the HPC `events.json` format, if someone builds them later.
+
 ## What HPC is good for here
 
 Torch has free GPUs, so use it to build and test without spending GCP credits:

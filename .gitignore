@@ -26,3 +26,4 @@ logs/*
 results/synthetic/
 analysis/figures/synthetic/
 analysis/*_synthetic.csv
+results/local/
