@@ -1,0 +1,32 @@
+# Locust pod on the CPU pool. Runs are started with kubectl exec so laptop networks never affect results.
+# Create the files first:
+#   kubectl create configmap locust-files --from-file=loadtest/ --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  labels: {app: loadgen}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: loadgen}
+  template:
+    metadata:
+      labels: {app: loadgen}
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: default-pool
+      containers:
+      - name: locust
+        image: locustio/locust
+        command: ["sleep", "infinity"]
+        resources:
+          requests: {cpu: "1", memory: 1Gi}
+        volumeMounts:
+        - {name: app, mountPath: /app}
+        - {name: results, mountPath: /results}
+      volumes:
+      - name: app
+        configMap: {name: locust-files}
+      - name: results
+        emptyDir: {}

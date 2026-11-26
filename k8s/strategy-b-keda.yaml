@@ -1,0 +1,23 @@
+# Strategy B, load based. Template: envsubst < k8s/strategy-b-keda.yaml | kubectl apply -f -
+# KEDA divides the query result by replica count, so the threshold is waiting requests PER replica.
+# Confirm the metric name with: curl -s <vllm>:8000/metrics | grep num_requests_waiting
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-queue
+spec:
+  scaleTargetRef: {name: vllm}
+  minReplicaCount: ${MIN_REPLICAS}
+  maxReplicaCount: ${MAX_REPLICAS}
+  pollingInterval: ${CHECK_INTERVAL_S}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: ${SCALE_DOWN_WINDOW_S}
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: ${PROM_URL_IN_CLUSTER}
+      query: sum(vllm:num_requests_waiting)
+      threshold: "${QUEUE_THRESHOLD}"

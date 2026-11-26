@@ -1,0 +1,19 @@
+# secrets and local config
+config/relay.env
+*.json.key
+*credentials*.json
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# large artifacts
+*.sif
+models/
+hf_cache/
+
+# os
+.DS_Store
